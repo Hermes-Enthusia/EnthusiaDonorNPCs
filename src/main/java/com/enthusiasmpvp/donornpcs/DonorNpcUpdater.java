@@ -8,6 +8,7 @@ import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.bukkit.event.player.PlayerTeleportEvent;
 
+import java.io.IOException;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -55,6 +56,7 @@ public final class DonorNpcUpdater {
         UpdateStatus status = statuses.computeIfAbsent(entry.statusKey(), ignored -> new UpdateStatus(entry));
         String placeholderValue = "";
         String desiredSkinName = config.defaultSkinName();
+        String fallbackSkinName = config.defaultSkinName();
         UUID desiredUuid = null;
 
         try {
@@ -70,13 +72,17 @@ public final class DonorNpcUpdater {
                 }
             }
 
-            if (desiredUuid == null && !entry.namePlaceholder().isBlank()) {
-                placeholderValue = PlaceholderAPI.setPlaceholders((org.bukkit.OfflinePlayer) null, entry.namePlaceholder());
-                desiredSkinName = PlaceholderNameUtil.cleanOrDefault(
+            if (!entry.namePlaceholder().isBlank()) {
+                String namePlaceholderValue = PlaceholderAPI.setPlaceholders((org.bukkit.OfflinePlayer) null, entry.namePlaceholder());
+                fallbackSkinName = PlaceholderNameUtil.cleanOrDefault(
                         entry.namePlaceholder(),
-                        placeholderValue,
+                        namePlaceholderValue,
                         config.defaultSkinName()
                 );
+                if (desiredUuid == null) {
+                    placeholderValue = namePlaceholderValue;
+                    desiredSkinName = fallbackSkinName;
+                }
             }
 
             String desiredSkinKey = desiredUuid == null ? desiredSkinName : "uuid:" + desiredUuid;
@@ -101,7 +107,7 @@ public final class DonorNpcUpdater {
             }
 
             if (desiredUuid != null) {
-                applyUuidSkinAsync(entry, npc, status, placeholderValue, desiredUuid, desiredSkinKey, force);
+                applyUuidSkinAsync(entry, npc, status, placeholderValue, desiredUuid, desiredSkinKey, fallbackSkinName, force);
             } else {
                 applyNameSkin(entry, npc, desiredSkinName);
                 status.markSuccess(placeholderValue, desiredSkinKey, "Updated by name/default skin");
@@ -123,6 +129,7 @@ public final class DonorNpcUpdater {
             String placeholderValue,
             UUID uuid,
             String desiredSkinKey,
+            String fallbackSkinName,
             boolean force
     ) {
         status.markSkipped(placeholderValue, desiredSkinKey, "Fetching UUID skin texture");
@@ -142,6 +149,15 @@ public final class DonorNpcUpdater {
                         plugin.getLogger().log(Level.WARNING, message + ".", ex);
                     }
                 });
+            } catch (SkinProfileNotFoundException ex) {
+                plugin.getServer().getScheduler().runTask(plugin, () ->
+                        applyFallbackSkin(entry, npc, status, placeholderValue, desiredSkinKey, uuid, fallbackSkinName, ex.getMessage()));
+            } catch (IOException | InterruptedException ex) {
+                if (ex instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                }
+                plugin.getServer().getScheduler().runTask(plugin, () ->
+                        applyFallbackSkin(entry, npc, status, placeholderValue, desiredSkinKey, uuid, fallbackSkinName, ex.getMessage()));
             } catch (Exception ex) {
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
                     String message = "Failed to fetch UUID skin for " + entry.label() + " using UUID '" + uuid + "'";
@@ -150,6 +166,30 @@ public final class DonorNpcUpdater {
                 });
             }
         });
+    }
+
+    private void applyFallbackSkin(
+            LeaderboardEntry entry,
+            NPC npc,
+            UpdateStatus status,
+            String placeholderValue,
+            String desiredSkinKey,
+            UUID uuid,
+            String fallbackSkinName,
+            String reason
+    ) {
+        try {
+            applyNameSkin(entry, npc, fallbackSkinName);
+            status.markSuccess(placeholderValue, desiredSkinKey, "UUID skin unavailable; used fallback skin '" + fallbackSkinName + "'");
+            plugin.getLogger().warning(entry.label()
+                    + ": could not use UUID skin '" + uuid + "' (" + reason
+                    + "), so fallback skin '" + fallbackSkinName + "' was applied. "
+                    + "If you want exact UUID skins, make sure the placeholder returns an online-mode Mojang UUID.");
+        } catch (Exception ex) {
+            String message = "Failed to apply fallback skin for " + entry.label() + " after UUID skin fetch failed";
+            status.markFailure(placeholderValue, desiredSkinKey, message + ": " + ex.getMessage());
+            plugin.getLogger().log(Level.WARNING, message + ".", ex);
+        }
     }
 
     private void applyUuidSkin(LeaderboardEntry entry, NPC npc, UUID uuid, SkinTexture texture) {

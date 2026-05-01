@@ -38,6 +38,9 @@ public final class MojangSkinService {
                 .build();
 
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() == 204 || response.statusCode() == 404) {
+            throw new SkinProfileNotFoundException(uuid, response.statusCode());
+        }
         if (response.statusCode() != 200) {
             throw new IOException("Mojang session server returned HTTP " + response.statusCode());
         }
