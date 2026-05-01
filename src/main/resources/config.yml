@@ -36,6 +36,30 @@ leaderboards:
         npc-id: 297
         name-placeholder: "%enthusiadonors_monthly_top_3_name%"
 
+  top-balance:
+    display-name: "Top Balance"
+    positions:
+      1:
+        npc-id: 300
+        uuid-placeholder: "%currency_top_items_10_uuid%"
+        facing: north
+
+  top-playtime:
+    display-name: "Top Playtime"
+    positions:
+      1:
+        npc-id: 302
+        uuid-placeholder: "%playtime_top_active_all_1_uuid%"
+        facing: north
+
+  top-kills:
+    display-name: "Top Kills"
+    positions:
+      1:
+        npc-id: 303
+        uuid-placeholder: "%enthusiadonors_kills_top_1_uuid%"
+        facing: north
+
 # Add these once you know the NPC IDs for the #10 spots:
 #      10:
 #        npc-id: 299

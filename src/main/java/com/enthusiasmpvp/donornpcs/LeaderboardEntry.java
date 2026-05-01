@@ -6,7 +6,8 @@ public record LeaderboardEntry(
         int position,
         int npcId,
         String namePlaceholder,
-        String uuidPlaceholder
+        String uuidPlaceholder,
+        FacingDirection facingDirection
 ) {
     public String statusKey() {
         return leaderboardKey + ":" + position + ":" + npcId;

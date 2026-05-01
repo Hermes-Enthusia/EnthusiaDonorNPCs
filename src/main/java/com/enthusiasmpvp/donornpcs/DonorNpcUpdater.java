@@ -17,8 +17,6 @@ import java.util.UUID;
 import java.util.logging.Level;
 
 public final class DonorNpcUpdater {
-    private static final float EAST_YAW = -90.0F;
-
     private final EnthusiaDonorNPCsPlugin plugin;
     private final MojangSkinService mojangSkinService = new MojangSkinService();
     private final Map<String, UpdateStatus> statuses = new LinkedHashMap<>();
@@ -94,7 +92,7 @@ public final class DonorNpcUpdater {
                 return;
             }
 
-            faceEast(npc);
+            faceConfiguredDirection(entry, npc);
 
             if (!force
                     && config.onlyUpdateWhenNameChanges()
@@ -230,7 +228,7 @@ public final class DonorNpcUpdater {
 
         // The skin trait also respawns when needed, but this explicit refresh helps clients
         // near the NPC see changed player skins without waiting for a full server restart.
-        setEastRotation(respawnLocation);
+        setRotation(respawnLocation, entry.facingDirection());
         npc.despawn();
         boolean spawned = npc.spawn(respawnLocation);
         if (!spawned) {
@@ -238,7 +236,7 @@ public final class DonorNpcUpdater {
         }
     }
 
-    private void faceEast(NPC npc) {
+    private void faceConfiguredDirection(LeaderboardEntry entry, NPC npc) {
         if (!npc.isSpawned()) {
             return;
         }
@@ -248,16 +246,20 @@ public final class DonorNpcUpdater {
             return;
         }
 
-        setEastRotation(location);
+        FacingDirection facingDirection = entry.facingDirection();
+        setRotation(location, facingDirection);
         npc.teleport(location, PlayerTeleportEvent.TeleportCause.PLUGIN);
 
-        // Also send a facing update. East is positive X in Bukkit/Minecraft coordinates.
-        Location eastTarget = location.clone().add(10.0, 0.0, 0.0);
-        npc.faceLocation(eastTarget);
+        Location faceTarget = location.clone().add(
+                facingDirection.targetXOffset(),
+                facingDirection.targetYOffset(),
+                facingDirection.targetZOffset()
+        );
+        npc.faceLocation(faceTarget);
     }
 
-    private void setEastRotation(Location location) {
-        location.setYaw(EAST_YAW);
+    private void setRotation(Location location, FacingDirection facingDirection) {
+        location.setYaw(facingDirection.yaw());
         location.setPitch(0.0F);
     }
 
