@@ -4,16 +4,16 @@ public record LeaderboardEntry(
         String leaderboardKey,
         String leaderboardDisplayName,
         int position,
-        int npcId,
+        String npcName,
         String namePlaceholder,
         String uuidPlaceholder,
         FacingDirection facingDirection
 ) {
     public String statusKey() {
-        return leaderboardKey + ":" + position + ":" + npcId;
+        return leaderboardKey + ":" + position + ":" + npcName;
     }
 
     public String label() {
-        return leaderboardDisplayName + " #" + position + " (NPC " + npcId + ")";
+        return leaderboardDisplayName + " #" + position + " (NPC " + npcName + ")";
     }
 }

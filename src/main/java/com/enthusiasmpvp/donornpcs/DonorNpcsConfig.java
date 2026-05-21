@@ -67,11 +67,11 @@ public final class DonorNpcsConfig {
                     }
 
                     int parsedPosition = parsePosition(positionKey);
-                    int npcId = position.getInt("npc-id", -1);
+                    String npcName = position.getString("npc-name", "");
                     String namePlaceholder = position.getString("name-placeholder", "");
                     String uuidPlaceholder = position.getString("uuid-placeholder", "");
                     FacingDirection facingDirection = FacingDirection.fromConfig(position.getString("facing", "east"));
-                    if (parsedPosition < 1 || npcId < 0 || (namePlaceholder.isBlank() && uuidPlaceholder.isBlank())) {
+                    if (parsedPosition < 1 || npcName.isBlank() && (namePlaceholder.isBlank() && uuidPlaceholder.isBlank())) {
                         continue;
                     }
 
@@ -79,7 +79,7 @@ public final class DonorNpcsConfig {
                             leaderboardKey,
                             displayName,
                             parsedPosition,
-                            npcId,
+                            npcName,
                             namePlaceholder.trim(),
                             uuidPlaceholder.trim(),
                             facingDirection

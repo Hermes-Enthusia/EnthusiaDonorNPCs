@@ -15,7 +15,7 @@ public final class EnthusiaDonorNPCsPlugin extends JavaPlugin {
     public void onEnable() {
         saveDefaultConfig();
 
-        if (!requireEnabledPlugin("Citizens") || !requireEnabledPlugin("PlaceholderAPI")) {
+        if (!requireEnabledPlugin("FancyNpcs") || !requireEnabledPlugin("PlaceholderAPI")) {
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
@@ -85,7 +85,7 @@ public final class EnthusiaDonorNPCsPlugin extends JavaPlugin {
         long intervalTicks = donorNpcsConfig.updateIntervalMinutes() * 60L * 20L;
         repeatingTask = getServer().getScheduler().runTaskTimer(this, () -> updater.updateAll(false), intervalTicks, intervalTicks);
 
-        // Delay the startup update so Citizens and PlaceholderAPI have finished their own loading work.
+        // Delay the startup update so FancyNpcs and PlaceholderAPI have finished their own loading work.
         startupTask = getServer().getScheduler().runTaskLater(this, () -> updater.updateAll(false), 10L * 20L);
     }
 

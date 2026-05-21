@@ -1,12 +1,12 @@
 package com.enthusiasmpvp.donornpcs;
 
+import de.oliver.fancynpcs.api.FancyNpcsPlugin;
+import de.oliver.fancynpcs.api.Npc;
+import de.oliver.fancynpcs.api.NpcData;
+import de.oliver.fancynpcs.api.skins.SkinData;
 import me.clip.placeholderapi.PlaceholderAPI;
-import net.citizensnpcs.api.CitizensAPI;
-import net.citizensnpcs.api.npc.NPC;
-import net.citizensnpcs.trait.SkinTrait;
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
-import org.bukkit.entity.Entity;
-import org.bukkit.event.player.PlayerTeleportEvent;
 
 import java.io.IOException;
 import java.util.Collection;
@@ -84,9 +84,9 @@ public final class DonorNpcUpdater {
             }
 
             String desiredSkinKey = desiredUuid == null ? desiredSkinName : "uuid:" + desiredUuid;
-            NPC npc = CitizensAPI.getNPCRegistry().getById(entry.npcId());
+            Npc npc = FancyNpcsPlugin.get().getNpcManager().getNpc(entry.npcName());
             if (npc == null) {
-                String message = "Citizens NPC ID " + entry.npcId() + " does not exist";
+                String message = "FancyNPCs NPC '" + entry.npcName() + "' does not exist";
                 status.markFailure(placeholderValue, desiredSkinKey, message);
                 plugin.getLogger().warning(entry.label() + ": " + message + ".");
                 return;
@@ -122,7 +122,7 @@ public final class DonorNpcUpdater {
 
     private void applyUuidSkinAsync(
             LeaderboardEntry entry,
-            NPC npc,
+            Npc npc,
             UpdateStatus status,
             String placeholderValue,
             UUID uuid,
@@ -168,7 +168,7 @@ public final class DonorNpcUpdater {
 
     private void applyFallbackSkin(
             LeaderboardEntry entry,
-            NPC npc,
+            Npc npc,
             UpdateStatus status,
             String placeholderValue,
             String desiredSkinKey,
@@ -190,84 +190,56 @@ public final class DonorNpcUpdater {
         }
     }
 
-    private void applyUuidSkin(LeaderboardEntry entry, NPC npc, UUID uuid, SkinTexture texture) {
-        SkinTrait skinTrait = npc.getOrAddTrait(SkinTrait.class);
-
-        // UUID placeholders avoid name-history ambiguity. We fetch the signed Mojang texture
-        // off the main thread, then persist the exact texture onto the Citizens SkinTrait.
-        skinTrait.setFetchDefaultSkin(false);
-        skinTrait.setShouldUpdateSkins(true);
-        skinTrait.setSkinPersistent(uuid.toString(), texture.signature(), texture.value());
+    private void applyUuidSkin(LeaderboardEntry entry, Npc npc, UUID uuid, SkinTexture texture) {
+        NpcData data = npc.getData();
+        SkinData skinData = new SkinData(uuid.toString(), SkinData.SkinVariant.AUTO, texture.value(), texture.signature());
+        data.setSkinData(skinData);
+        npc.spawnForAll();
 
         if (config.refreshNpcAfterSkinChange()) {
             refreshNpc(entry, npc);
         }
     }
 
-    private void applyNameSkin(LeaderboardEntry entry, NPC npc, String skinName) {
-        SkinTrait skinTrait = npc.getOrAddTrait(SkinTrait.class);
-
-        // Citizens owns the profile lookup/cache. Passing forceUpdate=true asks it to fetch
-        // the named player's skin data when it has not already been loaded.
-        skinTrait.setFetchDefaultSkin(false);
-        skinTrait.setShouldUpdateSkins(true);
-        skinTrait.setSkinName(skinName, true);
+    private void applyNameSkin(LeaderboardEntry entry, Npc npc, String skinName) {
+        NpcData data = npc.getData();
+        data.setSkin(skinName, SkinData.SkinVariant.AUTO);
+        npc.spawnForAll();
 
         if (config.refreshNpcAfterSkinChange()) {
             refreshNpc(entry, npc);
         }
     }
 
-    private void refreshNpc(LeaderboardEntry entry, NPC npc) {
-        boolean wasSpawned = npc.isSpawned();
-        Location respawnLocation = currentOrStoredLocation(npc);
-
-        if (!wasSpawned || respawnLocation == null) {
+    private void refreshNpc(LeaderboardEntry entry, Npc npc) {
+        Location loc = npc.getData().getLocation();
+        if (loc == null || loc.getWorld() == null) {
             return;
         }
 
-        // The skin trait also respawns when needed, but this explicit refresh helps clients
-        // near the NPC see changed player skins without waiting for a full server restart.
-        setRotation(respawnLocation, entry.facingDirection());
-        npc.despawn();
-        boolean spawned = npc.spawn(respawnLocation);
-        if (!spawned) {
-            plugin.getLogger().warning(entry.label() + ": skin was set, but the NPC did not respawn.");
-        }
+        setRotation(loc, entry.facingDirection());
+        npc.removeForAll();
+        npc.create();
+        npc.spawnForAll();
     }
 
-    private void faceConfiguredDirection(LeaderboardEntry entry, NPC npc) {
-        if (!npc.isSpawned()) {
-            return;
-        }
-
-        Location location = currentOrStoredLocation(npc);
-        if (location == null) {
+    private void faceConfiguredDirection(LeaderboardEntry entry, Npc npc) {
+        Location location = npc.getData().getLocation();
+        if (location == null || location.getWorld() == null) {
             return;
         }
 
         FacingDirection facingDirection = entry.facingDirection();
         setRotation(location, facingDirection);
-        npc.teleport(location, PlayerTeleportEvent.TeleportCause.PLUGIN);
 
-        Location faceTarget = location.clone().add(
-                facingDirection.targetXOffset(),
-                facingDirection.targetYOffset(),
-                facingDirection.targetZOffset()
-        );
-        npc.faceLocation(faceTarget);
+        // FancyNPCs handles facing via turn-to-player; for fixed facing we rotate the NPC location
+        NpcData data = npc.getData();
+        data.setLocation(location);
+        npc.spawnForAll();
     }
 
     private void setRotation(Location location, FacingDirection facingDirection) {
         location.setYaw(facingDirection.yaw());
         location.setPitch(0.0F);
-    }
-
-    private Location currentOrStoredLocation(NPC npc) {
-        Entity entity = npc.getEntity();
-        if (entity != null) {
-            return entity.getLocation();
-        }
-        return npc.getStoredLocation();
     }
 }

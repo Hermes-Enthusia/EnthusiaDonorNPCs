@@ -93,7 +93,7 @@ public final class DonorNpcsCommand implements CommandExecutor, TabCompleter {
 
             sender.sendMessage(ChatColor.AQUA + entry.leaderboardDisplayName()
                     + ChatColor.GRAY + " #" + entry.position()
-                    + " | NPC " + entry.npcId()
+                    + " | NPC '" + entry.npcName() + "'"
                     + " | facing " + entry.facingDirection().name().toLowerCase(Locale.ROOT)
                     + " | name " + printable(entry.namePlaceholder())
                     + " | uuid " + printable(entry.uuidPlaceholder()));
