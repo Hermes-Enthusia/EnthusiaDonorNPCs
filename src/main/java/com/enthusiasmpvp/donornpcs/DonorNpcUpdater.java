@@ -92,8 +92,6 @@ public final class DonorNpcUpdater {
                 return;
             }
 
-            faceConfiguredDirection(entry, npc);
-
             if (!force
                     && config.onlyUpdateWhenNameChanges()
                     && desiredSkinKey.equalsIgnoreCase(status.lastAppliedSkinName())) {
@@ -103,6 +101,8 @@ public final class DonorNpcUpdater {
                 }
                 return;
             }
+
+            faceConfiguredDirection(entry, npc);
 
             if (desiredUuid != null) {
                 applyUuidSkinAsync(entry, npc, status, placeholderValue, desiredUuid, desiredSkinKey, fallbackSkinName, force);
@@ -194,20 +194,20 @@ public final class DonorNpcUpdater {
         NpcData data = npc.getData();
         SkinData skinData = new SkinData(uuid.toString(), SkinData.SkinVariant.AUTO, texture.value(), texture.signature());
         data.setSkinData(skinData);
-        npc.spawnForAll();
-
-        if (config.refreshNpcAfterSkinChange()) {
-            refreshNpc(entry, npc);
-        }
+        respawnNpc(entry, npc);
     }
 
     private void applyNameSkin(LeaderboardEntry entry, Npc npc, String skinName) {
         NpcData data = npc.getData();
         data.setSkin(skinName, SkinData.SkinVariant.AUTO);
-        npc.spawnForAll();
+        respawnNpc(entry, npc);
+    }
 
+    private void respawnNpc(LeaderboardEntry entry, Npc npc) {
         if (config.refreshNpcAfterSkinChange()) {
             refreshNpc(entry, npc);
+        } else {
+            npc.spawnForAll();
         }
     }
 
@@ -231,11 +231,8 @@ public final class DonorNpcUpdater {
 
         FacingDirection facingDirection = entry.facingDirection();
         setRotation(location, facingDirection);
-
-        // FancyNPCs handles facing via turn-to-player; for fixed facing we rotate the NPC location
         NpcData data = npc.getData();
         data.setLocation(location);
-        npc.spawnForAll();
     }
 
     private void setRotation(Location location, FacingDirection facingDirection) {

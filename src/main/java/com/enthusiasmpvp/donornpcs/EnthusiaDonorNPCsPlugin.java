@@ -22,7 +22,6 @@ public final class EnthusiaDonorNPCsPlugin extends JavaPlugin {
 
         reloadPluginConfig();
         registerCommand();
-        scheduleUpdates();
 
         getLogger().info("Enabled with " + donorNpcsConfig.entries().size() + " configured donor NPC position(s).");
     }
