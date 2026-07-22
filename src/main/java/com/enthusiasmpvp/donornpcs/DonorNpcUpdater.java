@@ -155,7 +155,9 @@ public final class DonorNpcUpdater {
                     return;
                 }
             }
-            throw new RuntimeException("Name skin lookup failed for '" + desiredSkinName + "': " + ex.getMessage(), ex);
+            plugin.getLogger().warning(entry.label() + ": name lookup for '" + desiredSkinName + "' and fallback '" + fallbackSkinName + "' both failed (no cached skins). Add skins to config.yml or verify Mojang connectivity.");
+            status.markFailure(placeholderValue, desiredSkinKey, "Skin lookup failed (no cache, no Mojang)");
+            tryUpdateDisplayNameOnly(entry, npc, status, placeholderValue, desiredSkinKey, displayName);
         }
     }
 
@@ -234,12 +236,18 @@ public final class DonorNpcUpdater {
                         + ": could not use UUID skin '" + uuid + "' (" + reason
                         + "), so cached fallback skin '" + fallbackSkinName + "' was applied.");
             } else {
-                applyNameSkin(entry, npc, fallbackSkinName, displayName);
-                status.markSuccess(placeholderValue, desiredSkinKey, "UUID skin unavailable; used fallback skin '" + fallbackSkinName + "'");
-                plugin.getLogger().warning(entry.label()
-                        + ": could not use UUID skin '" + uuid + "' (" + reason
-                        + "), so fallback skin '" + fallbackSkinName + "' was applied. "
-                        + "If you want exact UUID skins, make sure the placeholder returns an online-mode Mojang UUID.");
+                try {
+                    applyNameSkin(entry, npc, fallbackSkinName, displayName);
+                    status.markSuccess(placeholderValue, desiredSkinKey, "UUID skin unavailable; used fallback skin '" + fallbackSkinName + "'");
+                    plugin.getLogger().warning(entry.label()
+                            + ": could not use UUID skin '" + uuid + "' (" + reason
+                            + "), so fallback skin '" + fallbackSkinName + "' was applied. "
+                            + "If you want exact UUID skins, make sure the placeholder returns an online-mode Mojang UUID.");
+                } catch (Exception fallbackEx) {
+                    plugin.getLogger().warning(entry.label() + ": UUID skin and fallback lookup both failed. Skin unchanged.");
+                    status.markFailure(placeholderValue, desiredSkinKey, "Skin lookup failed (no cache, no Mojang)");
+                    tryUpdateDisplayNameOnly(entry, npc, status, placeholderValue, desiredSkinKey, displayName);
+                }
             }
         } catch (Exception ex) {
             String message = "Failed to apply fallback skin for " + entry.label() + " after UUID skin fetch failed";
@@ -298,6 +306,19 @@ public final class DonorNpcUpdater {
         setRotation(location, facingDirection);
         NpcData data = npc.getData();
         data.setLocation(location);
+    }
+
+    private void tryUpdateDisplayNameOnly(LeaderboardEntry entry, Npc npc, UpdateStatus status, String placeholderValue, String desiredSkinKey, String displayName) {
+        try {
+            NpcData data = npc.getData();
+            updateDisplayName(data, displayName);
+            npc.spawnForAll();
+            if (config.logUpdates()) {
+                plugin.getLogger().info(entry.label() + " display name updated to '" + displayName + "' (skin unchanged).");
+            }
+        } catch (Exception ex) {
+            plugin.getLogger().warning(entry.label() + ": failed to update display name: " + ex.getMessage());
+        }
     }
 
     private void setRotation(Location location, FacingDirection facingDirection) {
