@@ -55,6 +55,7 @@ public final class DonorNpcUpdater {
         String placeholderValue = "";
         String desiredSkinName = config.defaultSkinName();
         String fallbackSkinName = config.defaultSkinName();
+        String displayName = "";
         UUID desiredUuid = null;
 
         try {
@@ -77,9 +78,11 @@ public final class DonorNpcUpdater {
                         namePlaceholderValue,
                         config.defaultSkinName()
                 );
+                displayName = namePlaceholderValue.isBlank() ? fallbackSkinName : namePlaceholderValue;
                 if (desiredUuid == null) {
                     placeholderValue = namePlaceholderValue;
                     desiredSkinName = fallbackSkinName;
+                    displayName = fallbackSkinName;
                 }
             }
 
@@ -105,9 +108,9 @@ public final class DonorNpcUpdater {
             faceConfiguredDirection(entry, npc);
 
             if (desiredUuid != null) {
-                applyUuidSkinAsync(entry, npc, status, placeholderValue, desiredUuid, desiredSkinKey, fallbackSkinName, force);
+                applyUuidSkinAsync(entry, npc, status, placeholderValue, desiredUuid, desiredSkinKey, fallbackSkinName, displayName, force);
             } else {
-                applyNameSkinCached(entry, npc, status, placeholderValue, desiredSkinName, desiredSkinKey, fallbackSkinName);
+                applyNameSkinCached(entry, npc, status, placeholderValue, desiredSkinName, desiredSkinKey, fallbackSkinName, displayName);
             }
         } catch (Exception ex) {
             String message = "Failed to update " + entry.label() + " to skin '" + desiredSkinName + "'";
@@ -116,7 +119,6 @@ public final class DonorNpcUpdater {
         }
     }
 
-    /** Tries the local skin cache first, falls back to FancyNPCs name-based lookup. */
     private void applyNameSkinCached(
             LeaderboardEntry entry,
             Npc npc,
@@ -124,11 +126,12 @@ public final class DonorNpcUpdater {
             String placeholderValue,
             String desiredSkinName,
             String desiredSkinKey,
-            String fallbackSkinName
+            String fallbackSkinName,
+            String displayName
     ) {
         CachedSkin cached = config.getCachedSkin(desiredSkinName);
         if (cached != null) {
-            applyCachedSkin(entry, npc, desiredSkinName, cached);
+            applyCachedSkin(entry, npc, displayName, cached);
             status.markSuccess(placeholderValue, desiredSkinKey, "Updated from skin cache");
             if (config.logUpdates()) {
                 plugin.getLogger().info(entry.label() + " skin updated to '" + desiredSkinName + "' (cached).");
@@ -136,19 +139,17 @@ public final class DonorNpcUpdater {
             return;
         }
 
-        // Fall back to FancyNPCs name lookup (may fail with SkinLoadException on offline servers)
         try {
-            applyNameSkin(entry, npc, desiredSkinName);
+            applyNameSkin(entry, npc, desiredSkinName, displayName);
             status.markSuccess(placeholderValue, desiredSkinKey, "Updated by name lookup");
             if (config.logUpdates()) {
                 plugin.getLogger().info(entry.label() + " skin updated to '" + desiredSkinName + "'.");
             }
         } catch (Exception ex) {
-            // Try fallback skin from cache
             if (!desiredSkinName.equalsIgnoreCase(fallbackSkinName)) {
                 CachedSkin fallbackCached = config.getCachedSkin(fallbackSkinName);
                 if (fallbackCached != null) {
-                    applyCachedSkin(entry, npc, fallbackSkinName, fallbackCached);
+                    applyCachedSkin(entry, npc, displayName, fallbackCached);
                     status.markSuccess(placeholderValue, desiredSkinKey, "Name '" + desiredSkinName + "' lookup failed; used cached fallback '" + fallbackSkinName + "'");
                     plugin.getLogger().warning(entry.label() + ": name lookup for '" + desiredSkinName + "' failed; used cached fallback '" + fallbackSkinName + "'.");
                     return;
@@ -160,8 +161,9 @@ public final class DonorNpcUpdater {
 
     private void applyCachedSkin(LeaderboardEntry entry, Npc npc, String displayName, CachedSkin cached) {
         NpcData data = npc.getData();
-        SkinData skinData = new SkinData(displayName.toLowerCase(), SkinData.SkinVariant.AUTO, cached.textureValue(), cached.textureSignature());
+        SkinData skinData = new SkinData(cached.name().toLowerCase(), SkinData.SkinVariant.AUTO, cached.textureValue(), cached.textureSignature());
         data.setSkinData(skinData);
+        updateDisplayName(data, displayName);
         respawnNpc(entry, npc);
     }
 
@@ -173,6 +175,7 @@ public final class DonorNpcUpdater {
             UUID uuid,
             String desiredSkinKey,
             String fallbackSkinName,
+            String displayName,
             boolean force
     ) {
         status.markSkipped(placeholderValue, desiredSkinKey, "Fetching UUID skin texture");
@@ -181,7 +184,7 @@ public final class DonorNpcUpdater {
                 SkinTexture texture = mojangSkinService.fetchTexture(uuid, force);
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
                     try {
-                        applyUuidSkin(entry, npc, uuid, texture);
+                        applyUuidSkin(entry, npc, uuid, displayName, texture);
                         status.markSuccess(placeholderValue, desiredSkinKey, "Updated by UUID");
                         if (config.logUpdates()) {
                             plugin.getLogger().info(entry.label() + " skin updated from UUID '" + uuid + "'.");
@@ -194,13 +197,13 @@ public final class DonorNpcUpdater {
                 });
             } catch (SkinProfileNotFoundException ex) {
                 plugin.getServer().getScheduler().runTask(plugin, () ->
-                        applyFallbackSkinCached(entry, npc, status, placeholderValue, desiredSkinKey, uuid, fallbackSkinName, ex.getMessage()));
+                        applyFallbackSkinCached(entry, npc, status, placeholderValue, desiredSkinKey, uuid, fallbackSkinName, displayName, ex.getMessage()));
             } catch (IOException | InterruptedException ex) {
                 if (ex instanceof InterruptedException) {
                     Thread.currentThread().interrupt();
                 }
                 plugin.getServer().getScheduler().runTask(plugin, () ->
-                        applyFallbackSkinCached(entry, npc, status, placeholderValue, desiredSkinKey, uuid, fallbackSkinName, ex.getMessage()));
+                        applyFallbackSkinCached(entry, npc, status, placeholderValue, desiredSkinKey, uuid, fallbackSkinName, displayName, ex.getMessage()));
             } catch (Exception ex) {
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
                     String message = "Failed to fetch UUID skin for " + entry.label() + " using UUID '" + uuid + "'";
@@ -219,19 +222,19 @@ public final class DonorNpcUpdater {
             String desiredSkinKey,
             UUID uuid,
             String fallbackSkinName,
+            String displayName,
             String reason
     ) {
         try {
             CachedSkin cached = config.getCachedSkin(fallbackSkinName);
             if (cached != null) {
-                applyCachedSkin(entry, npc, fallbackSkinName, cached);
+                applyCachedSkin(entry, npc, displayName, cached);
                 status.markSuccess(placeholderValue, desiredSkinKey, "UUID skin unavailable; used cached fallback skin '" + fallbackSkinName + "'");
                 plugin.getLogger().warning(entry.label()
                         + ": could not use UUID skin '" + uuid + "' (" + reason
                         + "), so cached fallback skin '" + fallbackSkinName + "' was applied.");
             } else {
-                // No cache entry — use FancyNPCs name lookup (may fail)
-                applyNameSkin(entry, npc, fallbackSkinName);
+                applyNameSkin(entry, npc, fallbackSkinName, displayName);
                 status.markSuccess(placeholderValue, desiredSkinKey, "UUID skin unavailable; used fallback skin '" + fallbackSkinName + "'");
                 plugin.getLogger().warning(entry.label()
                         + ": could not use UUID skin '" + uuid + "' (" + reason
@@ -245,17 +248,24 @@ public final class DonorNpcUpdater {
         }
     }
 
-    private void applyUuidSkin(LeaderboardEntry entry, Npc npc, UUID uuid, SkinTexture texture) {
+    private void applyUuidSkin(LeaderboardEntry entry, Npc npc, UUID uuid, String displayName, SkinTexture texture) {
         NpcData data = npc.getData();
         SkinData skinData = new SkinData(uuid.toString(), SkinData.SkinVariant.AUTO, texture.value(), texture.signature());
         data.setSkinData(skinData);
+        updateDisplayName(data, displayName);
         respawnNpc(entry, npc);
     }
 
-    private void applyNameSkin(LeaderboardEntry entry, Npc npc, String skinName) {
+    private void applyNameSkin(LeaderboardEntry entry, Npc npc, String skinName, String displayName) {
         NpcData data = npc.getData();
         data.setSkin(skinName, SkinData.SkinVariant.AUTO);
+        updateDisplayName(data, displayName);
         respawnNpc(entry, npc);
+    }
+
+    private void updateDisplayName(NpcData data, String displayName) {
+        if (displayName == null || displayName.isBlank()) return;
+        data.setDisplayName(displayName);
     }
 
     private void respawnNpc(LeaderboardEntry entry, Npc npc) {
