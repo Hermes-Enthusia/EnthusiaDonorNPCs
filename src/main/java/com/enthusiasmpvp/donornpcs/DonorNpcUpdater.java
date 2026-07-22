@@ -107,17 +107,62 @@ public final class DonorNpcUpdater {
             if (desiredUuid != null) {
                 applyUuidSkinAsync(entry, npc, status, placeholderValue, desiredUuid, desiredSkinKey, fallbackSkinName, force);
             } else {
-                applyNameSkin(entry, npc, desiredSkinName);
-                status.markSuccess(placeholderValue, desiredSkinKey, "Updated by name/default skin");
-                if (config.logUpdates()) {
-                    plugin.getLogger().info(entry.label() + " skin updated to '" + desiredSkinName + "'.");
-                }
+                applyNameSkinCached(entry, npc, status, placeholderValue, desiredSkinName, desiredSkinKey, fallbackSkinName);
             }
         } catch (Exception ex) {
             String message = "Failed to update " + entry.label() + " to skin '" + desiredSkinName + "'";
             status.markFailure(placeholderValue, desiredSkinName, message + ": " + ex.getMessage());
             plugin.getLogger().log(Level.WARNING, message + ".", ex);
         }
+    }
+
+    /** Tries the local skin cache first, falls back to FancyNPCs name-based lookup. */
+    private void applyNameSkinCached(
+            LeaderboardEntry entry,
+            Npc npc,
+            UpdateStatus status,
+            String placeholderValue,
+            String desiredSkinName,
+            String desiredSkinKey,
+            String fallbackSkinName
+    ) {
+        CachedSkin cached = config.getCachedSkin(desiredSkinName);
+        if (cached != null) {
+            applyCachedSkin(entry, npc, desiredSkinName, cached);
+            status.markSuccess(placeholderValue, desiredSkinKey, "Updated from skin cache");
+            if (config.logUpdates()) {
+                plugin.getLogger().info(entry.label() + " skin updated to '" + desiredSkinName + "' (cached).");
+            }
+            return;
+        }
+
+        // Fall back to FancyNPCs name lookup (may fail with SkinLoadException on offline servers)
+        try {
+            applyNameSkin(entry, npc, desiredSkinName);
+            status.markSuccess(placeholderValue, desiredSkinKey, "Updated by name lookup");
+            if (config.logUpdates()) {
+                plugin.getLogger().info(entry.label() + " skin updated to '" + desiredSkinName + "'.");
+            }
+        } catch (Exception ex) {
+            // Try fallback skin from cache
+            if (!desiredSkinName.equalsIgnoreCase(fallbackSkinName)) {
+                CachedSkin fallbackCached = config.getCachedSkin(fallbackSkinName);
+                if (fallbackCached != null) {
+                    applyCachedSkin(entry, npc, fallbackSkinName, fallbackCached);
+                    status.markSuccess(placeholderValue, desiredSkinKey, "Name '" + desiredSkinName + "' lookup failed; used cached fallback '" + fallbackSkinName + "'");
+                    plugin.getLogger().warning(entry.label() + ": name lookup for '" + desiredSkinName + "' failed; used cached fallback '" + fallbackSkinName + "'.");
+                    return;
+                }
+            }
+            throw new RuntimeException("Name skin lookup failed for '" + desiredSkinName + "': " + ex.getMessage(), ex);
+        }
+    }
+
+    private void applyCachedSkin(LeaderboardEntry entry, Npc npc, String displayName, CachedSkin cached) {
+        NpcData data = npc.getData();
+        SkinData skinData = new SkinData(displayName.toLowerCase(), SkinData.SkinVariant.AUTO, cached.textureValue(), cached.textureSignature());
+        data.setSkinData(skinData);
+        respawnNpc(entry, npc);
     }
 
     private void applyUuidSkinAsync(
@@ -149,13 +194,13 @@ public final class DonorNpcUpdater {
                 });
             } catch (SkinProfileNotFoundException ex) {
                 plugin.getServer().getScheduler().runTask(plugin, () ->
-                        applyFallbackSkin(entry, npc, status, placeholderValue, desiredSkinKey, uuid, fallbackSkinName, ex.getMessage()));
+                        applyFallbackSkinCached(entry, npc, status, placeholderValue, desiredSkinKey, uuid, fallbackSkinName, ex.getMessage()));
             } catch (IOException | InterruptedException ex) {
                 if (ex instanceof InterruptedException) {
                     Thread.currentThread().interrupt();
                 }
                 plugin.getServer().getScheduler().runTask(plugin, () ->
-                        applyFallbackSkin(entry, npc, status, placeholderValue, desiredSkinKey, uuid, fallbackSkinName, ex.getMessage()));
+                        applyFallbackSkinCached(entry, npc, status, placeholderValue, desiredSkinKey, uuid, fallbackSkinName, ex.getMessage()));
             } catch (Exception ex) {
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
                     String message = "Failed to fetch UUID skin for " + entry.label() + " using UUID '" + uuid + "'";
@@ -166,7 +211,7 @@ public final class DonorNpcUpdater {
         });
     }
 
-    private void applyFallbackSkin(
+    private void applyFallbackSkinCached(
             LeaderboardEntry entry,
             Npc npc,
             UpdateStatus status,
@@ -177,12 +222,22 @@ public final class DonorNpcUpdater {
             String reason
     ) {
         try {
-            applyNameSkin(entry, npc, fallbackSkinName);
-            status.markSuccess(placeholderValue, desiredSkinKey, "UUID skin unavailable; used fallback skin '" + fallbackSkinName + "'");
-            plugin.getLogger().warning(entry.label()
-                    + ": could not use UUID skin '" + uuid + "' (" + reason
-                    + "), so fallback skin '" + fallbackSkinName + "' was applied. "
-                    + "If you want exact UUID skins, make sure the placeholder returns an online-mode Mojang UUID.");
+            CachedSkin cached = config.getCachedSkin(fallbackSkinName);
+            if (cached != null) {
+                applyCachedSkin(entry, npc, fallbackSkinName, cached);
+                status.markSuccess(placeholderValue, desiredSkinKey, "UUID skin unavailable; used cached fallback skin '" + fallbackSkinName + "'");
+                plugin.getLogger().warning(entry.label()
+                        + ": could not use UUID skin '" + uuid + "' (" + reason
+                        + "), so cached fallback skin '" + fallbackSkinName + "' was applied.");
+            } else {
+                // No cache entry — use FancyNPCs name lookup (may fail)
+                applyNameSkin(entry, npc, fallbackSkinName);
+                status.markSuccess(placeholderValue, desiredSkinKey, "UUID skin unavailable; used fallback skin '" + fallbackSkinName + "'");
+                plugin.getLogger().warning(entry.label()
+                        + ": could not use UUID skin '" + uuid + "' (" + reason
+                        + "), so fallback skin '" + fallbackSkinName + "' was applied. "
+                        + "If you want exact UUID skins, make sure the placeholder returns an online-mode Mojang UUID.");
+            }
         } catch (Exception ex) {
             String message = "Failed to apply fallback skin for " + entry.label() + " after UUID skin fetch failed";
             status.markFailure(placeholderValue, desiredSkinKey, message + ": " + ex.getMessage());

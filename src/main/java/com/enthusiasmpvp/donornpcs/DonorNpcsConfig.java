@@ -6,8 +6,10 @@ import org.bukkit.configuration.file.FileConfiguration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 public final class DonorNpcsConfig {
     private final int updateIntervalMinutes;
@@ -17,6 +19,7 @@ public final class DonorNpcsConfig {
     private final boolean logUpdates;
     private final boolean logNoChange;
     private final List<LeaderboardEntry> entries;
+    private final Map<String, CachedSkin> cachedSkins;
 
     private DonorNpcsConfig(
             int updateIntervalMinutes,
@@ -25,7 +28,8 @@ public final class DonorNpcsConfig {
             boolean refreshNpcAfterSkinChange,
             boolean logUpdates,
             boolean logNoChange,
-            List<LeaderboardEntry> entries
+            List<LeaderboardEntry> entries,
+            Map<String, CachedSkin> cachedSkins
     ) {
         this.updateIntervalMinutes = updateIntervalMinutes;
         this.defaultSkinName = defaultSkinName;
@@ -34,6 +38,7 @@ public final class DonorNpcsConfig {
         this.logUpdates = logUpdates;
         this.logNoChange = logNoChange;
         this.entries = List.copyOf(entries);
+        this.cachedSkins = Map.copyOf(cachedSkins);
     }
 
     public static DonorNpcsConfig from(FileConfiguration config) {
@@ -92,6 +97,23 @@ public final class DonorNpcsConfig {
                 .comparing(LeaderboardEntry::leaderboardKey)
                 .thenComparingInt(LeaderboardEntry::position));
 
+        Map<String, CachedSkin> cachedSkins = new LinkedHashMap<>();
+        ConfigurationSection skinsSection = config.getConfigurationSection("skins");
+        if (skinsSection != null) {
+            for (String key : skinsSection.getKeys(false)) {
+                ConfigurationSection skinSection = skinsSection.getConfigurationSection(key);
+                if (skinSection == null) {
+                    continue;
+                }
+                String name = skinSection.getString("name", key).toLowerCase(Locale.ROOT);
+                String value = skinSection.getString("value", "");
+                String signature = skinSection.getString("signature", "");
+                if (!value.isBlank() && !signature.isBlank()) {
+                    cachedSkins.put(name, new CachedSkin(name, value, signature));
+                }
+            }
+        }
+
         return new DonorNpcsConfig(
                 updateIntervalMinutes,
                 defaultSkinName,
@@ -99,7 +121,8 @@ public final class DonorNpcsConfig {
                 refreshNpcAfterSkinChange,
                 logUpdates,
                 logNoChange,
-                entries
+                entries,
+                cachedSkins
         );
     }
 
@@ -129,6 +152,14 @@ public final class DonorNpcsConfig {
 
     public List<LeaderboardEntry> entries() {
         return Collections.unmodifiableList(entries);
+    }
+
+    public Map<String, CachedSkin> cachedSkins() {
+        return Collections.unmodifiableMap(cachedSkins);
+    }
+
+    public CachedSkin getCachedSkin(String name) {
+        return cachedSkins.get(name.toLowerCase(Locale.ROOT));
     }
 
     private static int parsePosition(String value) {

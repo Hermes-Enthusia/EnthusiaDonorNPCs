@@ -7,6 +7,18 @@ settings:
   log-updates: true
   log-no-change: false
 
+# Pre-cached skin textures for offline-mode servers where Mojang API lookups fail.
+# To obtain texture data for a username:
+#   1. On a server with online-mode, use /npc skin <name> on a temporary NPC
+#   2. Copy the value and signature from plugins/FancyNpcs/skins/<name>.json
+#   3. Or extract from legacy Citizens saves.yml
+skins:
+  # Example:
+  # steve:
+  #   name: "Steve"
+  #   value: "ewogICJ0aW1lc3RhbXAiIDogMTY4..."
+  #   signature: "K9sK8e..."
+
 leaderboards:
   alltime-donors:
     display-name: "All-Time Donors"
