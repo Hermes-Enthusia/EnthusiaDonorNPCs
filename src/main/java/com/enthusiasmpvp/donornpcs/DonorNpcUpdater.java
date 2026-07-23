@@ -302,9 +302,13 @@ public final class DonorNpcUpdater {
         respawnNpc(entry, npc);
     }
 
-    private void applyNameSkin(LeaderboardEntry entry, Npc npc, String skinName, String displayName) {
+    private void applyNameSkin(LeaderboardEntry entry, Npc npc, String skinName, String displayName) throws Exception {
         NpcData data = npc.getData();
-        data.setSkin(skinName, SkinData.SkinVariant.AUTO);
+        UUID uuid = mojangSkinService.resolveUuid(skinName)
+                .orElseThrow(() -> new IOException("Could not resolve UUID for name '" + skinName + "'"));
+        SkinTexture texture = mojangSkinService.fetchTexture(uuid, false);
+        SkinData skinData = new SkinData(uuid.toString(), SkinData.SkinVariant.AUTO, texture.value(), texture.signature());
+        data.setSkinData(skinData);
         updateDisplayName(data, displayName);
         respawnNpc(entry, npc);
     }
@@ -318,7 +322,7 @@ public final class DonorNpcUpdater {
         if (config.refreshNpcAfterSkinChange()) {
             refreshNpc(entry, npc);
         } else {
-            npc.spawnForAll();
+            npc.updateForAll();
         }
     }
 
@@ -350,7 +354,7 @@ public final class DonorNpcUpdater {
         try {
             NpcData data = npc.getData();
             updateDisplayName(data, displayName);
-            npc.spawnForAll();
+            npc.updateForAll();
             if (config.logUpdates()) {
                 plugin.getLogger().info(entry.label() + " display name updated to '" + displayName + "' (skin unchanged).");
             }
