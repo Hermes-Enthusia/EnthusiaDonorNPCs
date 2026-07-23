@@ -12,6 +12,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -19,11 +20,34 @@ public final class MojangSkinService {
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
-    private final Map<UUID, SkinTexture> cache = new ConcurrentHashMap<>();
+    private final Map<UUID, SkinTexture> textureCache = new ConcurrentHashMap<>();
+    private final Map<String, UUID> nameToUuidCache = new ConcurrentHashMap<>();
+
+    /** Resolve a real Mojang Java UUID from a username. */
+    public Optional<UUID> resolveUuid(String username) throws IOException, InterruptedException {
+        String key = username.toLowerCase();
+        UUID cached = nameToUuidCache.get(key);
+        if (cached != null) return Optional.of(cached);
+
+        URI uri = URI.create("https://api.minecraftservices.com/minecraft/profile/lookup/name/" + username);
+        HttpRequest request = HttpRequest.newBuilder(uri)
+                .timeout(Duration.ofSeconds(10))
+                .GET()
+                .build();
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() == 204 || response.statusCode() == 404) return Optional.empty();
+        if (response.statusCode() != 200) throw new IOException("Minecraft API returned HTTP " + response.statusCode());
+
+        JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
+        String id = root.get("id").getAsString();
+        UUID uuid = UuidUtil.parseUuid(id).orElseThrow(() -> new IOException("Invalid UUID from API: " + id));
+        nameToUuidCache.put(key, uuid);
+        return Optional.of(uuid);
+    }
 
     public SkinTexture fetchTexture(UUID uuid, boolean forceRefresh) throws IOException, InterruptedException {
         if (!forceRefresh) {
-            SkinTexture cached = cache.get(uuid);
+            SkinTexture cached = textureCache.get(uuid);
             if (cached != null) {
                 return cached;
             }
@@ -46,7 +70,7 @@ public final class MojangSkinService {
         }
 
         SkinTexture texture = parseTexture(response.body());
-        cache.put(uuid, texture);
+        textureCache.put(uuid, texture);
         return texture;
     }
 

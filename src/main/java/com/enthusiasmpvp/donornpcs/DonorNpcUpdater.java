@@ -199,7 +199,7 @@ public final class DonorNpcUpdater {
                 });
             } catch (SkinProfileNotFoundException ex) {
                 plugin.getServer().getScheduler().runTask(plugin, () ->
-                        applyFallbackSkinCached(entry, npc, status, placeholderValue, desiredSkinKey, uuid, fallbackSkinName, displayName, ex.getMessage()));
+                        retryWithResolvedUuid(entry, npc, status, placeholderValue, desiredSkinKey, uuid, fallbackSkinName, displayName, force, ex.getMessage()));
             } catch (IOException | InterruptedException ex) {
                 if (ex instanceof InterruptedException) {
                     Thread.currentThread().interrupt();
@@ -212,6 +212,44 @@ public final class DonorNpcUpdater {
                     status.markFailure(placeholderValue, desiredSkinKey, message + ": " + ex.getMessage());
                     plugin.getLogger().log(Level.WARNING, message + ".", ex);
                 });
+            }
+        });
+    }
+
+    private void retryWithResolvedUuid(
+            LeaderboardEntry entry,
+            Npc npc,
+            UpdateStatus status,
+            String placeholderValue,
+            String desiredSkinKey,
+            UUID donorUuid,
+            String fallbackSkinName,
+            String displayName,
+            boolean force,
+            String reason
+    ) {
+        if (fallbackSkinName.equals(config.defaultSkinName())) {
+            // No player name available to resolve
+            applyFallbackSkinCached(entry, npc, status, placeholderValue, desiredSkinKey, donorUuid, fallbackSkinName, displayName, reason);
+            return;
+        }
+        // Try resolving the real Mojang UUID from the player name (Geyser UUIDs are different)
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                var resolved = mojangSkinService.resolveUuid(fallbackSkinName);
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    if (resolved.isPresent() && !resolved.get().equals(donorUuid)) {
+                        UUID realUuid = resolved.get();
+                        plugin.getLogger().info(entry.label() + ": resolved real Mojang UUID " + realUuid + " from name '" + fallbackSkinName + "' (donor system had " + donorUuid + ")");
+                        // Retry the full UUID flow with the real UUID
+                        applyUuidSkinAsync(entry, npc, status, placeholderValue, realUuid, desiredSkinKey, fallbackSkinName, displayName, force);
+                    } else {
+                        applyFallbackSkinCached(entry, npc, status, placeholderValue, desiredSkinKey, donorUuid, fallbackSkinName, displayName, reason);
+                    }
+                });
+            } catch (Exception retryEx) {
+                plugin.getServer().getScheduler().runTask(plugin, () ->
+                        applyFallbackSkinCached(entry, npc, status, placeholderValue, desiredSkinKey, donorUuid, fallbackSkinName, displayName, reason));
             }
         });
     }
