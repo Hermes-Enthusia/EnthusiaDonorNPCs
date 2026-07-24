@@ -86,6 +86,16 @@ public final class DonorNpcUpdater {
                 }
             }
 
+            // When only uuid-placeholder is configured (no name-placeholder),
+            // resolve display name from the offline player data.
+            if (displayName.isBlank() && desiredUuid != null) {
+                String offlineName = Bukkit.getOfflinePlayer(desiredUuid).getName();
+                if (offlineName != null && !offlineName.isBlank()) {
+                    displayName = offlineName;
+                    fallbackSkinName = offlineName;
+                }
+            }
+
             String desiredSkinKey = desiredUuid == null ? desiredSkinName : "uuid:" + desiredUuid;
             Npc npc = FancyNpcsPlugin.get().getNpcManager().getNpc(entry.npcName());
             if (npc == null) {
